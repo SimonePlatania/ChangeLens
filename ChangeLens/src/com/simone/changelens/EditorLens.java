@@ -7,6 +7,7 @@ import org.eclipse.core.resources.IFile;
 import org.eclipse.jface.text.ITextViewer;
 import org.eclipse.jface.text.source.CompositeRuler;
 import org.eclipse.jface.text.source.IVerticalRuler;
+import org.eclipse.jface.text.source.IVerticalRulerColumn;
 import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.swt.SWT;
@@ -30,6 +31,9 @@ final class EditorLens {
     private final AbstractDecoratedTextEditor decorated;
 
     private LensController controller;
+    /** La diagnostica del righello si scrive una volta per sessione, non a ogni editor. */
+    private static boolean rulerLogged;
+
     private ChangeRulerColumn column;
     private AuthorPainter painter;
     private OverviewHover hover;
@@ -107,8 +111,10 @@ final class EditorLens {
         CompositeRuler composite = (CompositeRuler) ruler;
         int index = 0;
         for (Iterator<?> it = composite.getDecoratorIterator(); it.hasNext(); it.next()) index++;
+        logRuler("prima", composite);
         column = new ChangeRulerColumn(controller, viewer);
         composite.addDecorator(index, column);
+        logRuler("dopo", composite);
 
         // Inserire una colonna rimpagina il righello, e le colonne installate
         // da altri temi (DevStyle sostituisce quella dei numeri di riga) a
@@ -124,6 +130,31 @@ final class EditorLens {
                 }
             });
         }
+    }
+
+    /**
+     * Scrive nel log com'e composto il righello, una volta sola per sessione.
+     *
+     * Serve a capire i casi in cui i numeri di riga spariscono con temi che
+     * sostituiscono la colonna che li disegna: dal solo aspetto non si
+     * distingue una colonna larga e vuota da una colonna assente.
+     */
+    private static void logRuler(String when, CompositeRuler composite) {
+        if (rulerLogged) return;
+        StringBuilder out = new StringBuilder("ChangeLens: colonne del righello (").append(when).append(")");
+        try {
+            for (Iterator<?> it = composite.getDecoratorIterator(); it.hasNext();) {
+                Object decorator = it.next();
+                out.append("\n  - ").append(decorator == null ? "null" : decorator.getClass().getName());
+                if (decorator instanceof IVerticalRulerColumn) {
+                    out.append(" larghezza=").append(((IVerticalRulerColumn) decorator).getWidth());
+                }
+            }
+            if ("dopo".equals(when)) rulerLogged = true;
+        } catch (Exception failure) {
+            out.append("\n  (lettura interrotta: ").append(failure).append(')');
+        }
+        Activator.log(out.toString());
     }
 
     private static IVerticalRuler verticalRuler(AbstractTextEditor editor) {
