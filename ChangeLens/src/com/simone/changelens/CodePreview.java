@@ -27,7 +27,6 @@ import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.Shell;
-import org.eclipse.swt.widgets.TypedListener;
 import org.eclipse.ui.editors.text.EditorsUI;
 
 /**
@@ -60,6 +59,8 @@ final class CodePreview {
     /** Sporgenza e mezza altezza della punta del fumetto. */
     private static final int TAIL = 12;
     private static final int TAIL_HALF = 9;
+    /** Aria attorno ai numeri di riga dipinti nel margine. */
+    private static final int GUTTER_GAP = 8;
 
     private final Control anchor;
     private final ITextViewer viewer;
@@ -67,6 +68,9 @@ final class CodePreview {
     private IDocument windowDocument;
     private int windowFirst = -1;
     private int windowLast = -1;
+    private int gutterFirstLine = -1;
+    private int gutterDigits;
+    private int gutterPixels;
     private int windowWidth;
 
     private Shell shell;
@@ -163,27 +167,16 @@ final class CodePreview {
     private void buildWindow(IDocument document, StyledText source, int line, int lastLine) {
         int first = Math.max(0, line - WINDOW_MARGIN);
         int last = Math.min(lastLine, line + WINDOW_MARGIN);
-        int gutter = String.valueOf(last + 1).length();
-        String text = composeAll(readLines(document, first, last), first, gutter);
+        String text = readLines(document, first, last);
 
         windowDocument = document;
         windowFirst = first;
         windowLast = last;
         shownText = text;
+        setGutter(first, last + 1);
         content.setText(text);
-        applyStyles(document, source, first, gutter);
-        windowWidth = widthFor(text);
-    }
-
-    /** Come {@link #compose}, ma senza il tetto di righe: la fetta va tutta. */
-    private String composeAll(String body, int firstLine, int gutter) {
-        String[] lines = body.split("\n", -1);
-        StringBuilder out = new StringBuilder();
-        for (int i = 0; i < lines.length; i++) {
-            if (i > 0) out.append('\n');
-            out.append(pad(firstLine + i + 1, gutter)).append("  ").append(lines[i]);
-        }
-        return out.toString();
+        applyStyles(document, source, first);
+        windowWidth = widthFor(text) + gutterPixels;
     }
 
     void hide() {
@@ -217,13 +210,13 @@ final class CodePreview {
             hide();
             return;
         }
-        int gutter = gutterWidth(body, firstLine);
-        String text = compose(body, firstLine, gutter);
+        String text = compose(body);
         create(source);
         if (!text.equals(shownText)) {
             shownText = text;
+            setGutter(firstLine, firstLine + content(text));
             content.setText(text);
-            applyStyles(document, source, firstLine, gutter);
+            applyStyles(document, source, firstLine);
             // questo percorso scrive nello stesso widget: la fetta di pagina
             // tenuta per la barra panoramica non vale piu
             invalidateWindow();
@@ -264,31 +257,68 @@ final class CodePreview {
 
     // ---------------------------------------------------------------- testo
 
-    private String compose(String body, int firstLine, int gutter) {
+    /**
+     * Solo le righe di codice, senza numeri davanti.
+     *
+     * I numeri stavano nel testo, e ogni colonna del fumetto risultava
+     * spostata di qualche carattere rispetto all'editor: chi legge il testo
+     * del widget per decorarlo disegnava graffe e tonde staccate dal codice.
+     * Ora il testo del fumetto e esattamente il codice, e i numeri vengono
+     * dipinti nel margine.
+     */
+    private String compose(String body) {
         String[] lines = body.split("\n", -1);
         int count = Math.min(lines.length, MAX_LINES);
         StringBuilder out = new StringBuilder();
         for (int i = 0; i < count; i++) {
             if (i > 0) out.append('\n');
-            if (gutter > 0) out.append(pad(firstLine + i + 1, gutter)).append("  ");
             out.append(lines[i]);
         }
-        if (lines.length > count) {
-            out.append('\n').append("... altre ").append(lines.length - count).append(" righe");
+        return out.toString();
+    }
+
+    /** Numero di righe che {@link #compose} tiene davvero. */
+    private static int content(String text) {
+        return text.split("\n", -1).length;
+    }
+
+    /**
+     * Prepara il margine dei numeri: quanto e largo e da quale riga parte.
+     * Il margine e spazio della StyledText, non testo, quindi non sposta
+     * nessuna colonna.
+     */
+    private void setGutter(int firstLine, int lastNumber) {
+        gutterFirstLine = firstLine;
+        if (firstLine < 0) {
+            gutterPixels = 0;
+            content.setMargins(0, 0, 0, 0);
+            return;
         }
-        return out.toString();
+        gutterDigits = String.valueOf(Math.max(1, lastNumber)).length();
+        gutterPixels = gutterDigits * Math.max(6, averageCharWidth()) + 2 * GUTTER_GAP;
+        content.setMargins(gutterPixels, 0, 0, 0);
     }
 
-    private static int gutterWidth(String body, int firstLine) {
-        if (firstLine < 0) return 0;
-        int count = Math.min(body.split("\n", -1).length, MAX_LINES);
-        return String.valueOf(firstLine + count).length();
-    }
+    /**
+     * I numeri di riga, dipinti nel margine sinistro seguendo lo scorrimento.
+     * Si disegnano solo quelli visibili: il costo non cresce con la fetta di
+     * pagina tenuta in memoria.
+     */
+    private void drawGutter(GC gc) {
+        if (gutterPixels <= 0 || gutterFirstLine < 0 || content.isDisposed()) return;
+        int lineHeight = Math.max(1, content.getLineHeight());
+        int height = content.getClientArea().height;
+        int first = Math.max(0, content.getTopPixel() / lineHeight);
+        int last = Math.min(content.getLineCount() - 1, first + height / lineHeight + 1);
 
-    private static String pad(int number, int width) {
-        StringBuilder out = new StringBuilder(String.valueOf(number));
-        while (out.length() < width) out.insert(0, ' ');
-        return out.toString();
+        gc.setFont(content.getFont());
+        gc.setForeground(Palette.of(anchor.getDisplay()).get(mix(
+                content.getForeground().getRGB(), content.getBackground().getRGB(), 0.45)));
+        for (int i = first; i <= last; i++) {
+            String number = String.valueOf(gutterFirstLine + i + 1);
+            int width = gc.textExtent(number).x;
+            gc.drawString(number, gutterPixels - GUTTER_GAP - width, content.getLinePixel(i), true);
+        }
     }
 
     private static String readLines(IDocument document, int from, int to) {
@@ -314,10 +344,8 @@ final class CodePreview {
      * per tenere conto del numero di riga aggiunto davanti. Nessuna analisi
      * viene rieseguita: si leggono gli StyleRange gia calcolati.
      */
-    private void applyStyles(IDocument document, StyledText source, int firstLine, int gutter) {
-        dimGutter(gutter);
+    private void applyStyles(IDocument document, StyledText source, int firstLine) {
         if (document == null || source == null || source.isDisposed() || firstLine < 0) return;
-        int prefix = gutter > 0 ? gutter + 2 : 0;
         try {
             for (int i = 0; i < content.getLineCount(); i++) {
                 int line = firstLine + i;
@@ -335,7 +363,7 @@ final class CodePreview {
 
                 StyleRange[] ranges = source.getStyleRanges(start, length, true);
                 if (ranges == null) continue;
-                int target = content.getOffsetAtLine(i) + prefix;
+                int target = content.getOffsetAtLine(i);
                 for (StyleRange range : ranges) {
                     StyleRange copy = (StyleRange) range.clone();
                     copy.start = target + (range.start - start);
@@ -346,24 +374,6 @@ final class CodePreview {
         } catch (Exception ignored) {
             // presentazione non disponibile per quelle righe: resta il testo
         }
-    }
-
-    /** I numeri di riga vanno in secondo piano, come nell'editor. */
-    private void dimGutter(int gutter) {
-        if (gutter <= 0) return;
-        Color dim = Palette.of(anchor.getDisplay()).get(blend(
-                content.getForeground().getRGB(), content.getBackground().getRGB()));
-        for (int i = 0; i < content.getLineCount(); i++) {
-            try {
-                content.setStyleRange(new StyleRange(content.getOffsetAtLine(i), gutter, dim, null));
-            } catch (Exception ignored) {
-                // riga fuori dal testo: nessuno stile da applicare
-            }
-        }
-    }
-
-    private static RGB blend(RGB a, RGB b) {
-        return mix(a, b, 0.5);
     }
 
     /** Mescola due colori: {@code weight} e la quota di {@code a}. */
@@ -404,57 +414,36 @@ final class CodePreview {
                 drawFrame(event.gc);
             }
         });
+        // Il fumetto sta sopra l'editor e si prende la rotellina: senza questo
+        // con l'anteprima aperta lo scorrimento del mouse non arrivava piu a
+        // nessuno. La si gira all'editor, che e cio che si vuole scorrere.
+        Listener wheel = new Listener() {
+            @Override
+            public void handleEvent(Event event) {
+                event.doit = false;
+                if (source == null || source.isDisposed() || event.count == 0) return;
+                int step = Math.max(1, source.getLineHeight());
+                source.setTopPixel(Math.max(0, source.getTopPixel() - event.count * step));
+            }
+        };
+        content.addListener(SWT.MouseWheel, wheel);
+        shell.addListener(SWT.MouseWheel, wheel);
         content.addPaintListener(new PaintListener() {
             @Override
             public void paintControl(PaintEvent event) {
-                replayDecorations(event.gc);
+                drawGutter(event.gc);
+            }
+        });
+        // Il fumetto e una finestra a se: se Eclipse perde il fuoco resterebbe
+        // appeso sopra l'applicazione a cui si e passati.
+        anchor.getShell().addListener(SWT.Deactivate, new Listener() {
+            @Override
+            public void handleEvent(Event event) {
+                hide();
             }
         });
     }
 
-    /**
-     * Ripete sul fumetto i disegni che gli altri plugin fanno sull'editor:
-     * linee di indentazione, righelli, evidenziazioni. I loro PaintListener
-     * sono registrati sulla StyledText dell'editor, non sulla nostra, quindi
-     * senza questo passaggio il fumetto mostrerebbe solo la colorazione
-     * sintattica e non sarebbe una copia fedele della pagina.
-     *
-     * Non viene creato nulla e non viene ricalcolato nulla: si riusano gli
-     * stessi listener gia in memoria, invocati su un widget di poche righe.
-     * Il costo e quello di ridisegnare una finestrella, non l'editor.
-     */
-    private void replayDecorations(GC gc) {
-        if (source == null || source.isDisposed() || content == null || content.isDisposed()) return;
-        Listener[] listeners = source.getListeners(SWT.Paint);
-        if (listeners == null) return;
-        for (Listener listener : listeners) {
-            PaintListener painter = paintListenerOf(listener);
-            // il nostro pittore degli autori disegnerebbe nomi fuori posto:
-            // nel fumetto il testo ha altre righe e altri offset
-            if (painter == null || painter instanceof AuthorPainter) continue;
-            Event event = new Event();
-            event.widget = content;
-            event.display = content.getDisplay();
-            event.gc = gc;
-            Rectangle area = content.getClientArea();
-            event.x = area.x;
-            event.y = area.y;
-            event.width = area.width;
-            event.height = area.height;
-            try {
-                painter.paintControl(new PaintEvent(event));
-            } catch (Throwable ignored) {
-                // decoratore altrui che non gradisce un widget diverso:
-                // si salta, il fumetto resta comunque leggibile
-            }
-        }
-    }
-
-    private static PaintListener paintListenerOf(Listener listener) {
-        if (!(listener instanceof TypedListener)) return null;
-        Object typed = ((TypedListener) listener).getEventListener();
-        return typed instanceof PaintListener ? (PaintListener) typed : null;
-    }
 
     /**
      * Esclude un widget dal motore CSS del workbench, che altrimenti gli

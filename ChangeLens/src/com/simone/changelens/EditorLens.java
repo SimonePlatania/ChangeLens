@@ -11,6 +11,7 @@ import org.eclipse.jface.util.IPropertyChangeListener;
 import org.eclipse.jface.util.PropertyChangeEvent;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.StyledText;
+import org.eclipse.swt.widgets.Control;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.ui.texteditor.AbstractDecoratedTextEditor;
@@ -108,6 +109,21 @@ final class EditorLens {
         for (Iterator<?> it = composite.getDecoratorIterator(); it.hasNext(); it.next()) index++;
         column = new ChangeRulerColumn(controller, viewer);
         composite.addDecorator(index, column);
+
+        // Inserire una colonna rimpagina il righello, e le colonne installate
+        // da altri temi (DevStyle sostituisce quella dei numeri di riga) a
+        // volte restano senza spazio: una rimpaginazione esplicita, a giro di
+        // eventi finito, le rimette al loro posto.
+        final Control control = composite.getControl();
+        if (control != null && !control.isDisposed()) {
+            control.getDisplay().asyncExec(new Runnable() {
+                @Override
+                public void run() {
+                    if (control.isDisposed() || control.getParent() == null) return;
+                    control.getParent().layout(true, true);
+                }
+            });
+        }
     }
 
     private static IVerticalRuler verticalRuler(AbstractTextEditor editor) {

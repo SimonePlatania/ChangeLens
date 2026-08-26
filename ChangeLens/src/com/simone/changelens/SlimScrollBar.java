@@ -33,7 +33,7 @@ import com.simone.changelens.preferences.Preferences;
  */
 final class SlimScrollBar {
 
-    private static final int THUMB_WIDTH = 7;
+    private static final int THUMB_WIDTH = 9;
     private static final int MIN_THUMB = 70;
     private static final int MARGIN = 3;
 
@@ -170,23 +170,30 @@ final class SlimScrollBar {
         Palette palette = Palette.of(strip.getDisplay());
         gc.setAdvanced(true);
         gc.setAntialias(SWT.ON);
-        gc.setBackground(palette.get(new RGB(
+        RGB ink = new RGB(
                 (foreground.red + background.red * 2) / 3,
                 (foreground.green + background.green * 2) / 3,
-                (foreground.blue + background.blue * 2) / 3)));
+                (foreground.blue + background.blue * 2) / 3);
+        int opacity = hot || dragging ? 130 : 70;
 
         if (gc.getAdvanced()) {
             // Semitrasparente: le tacche di errori e warning restano leggibili
             // sotto la linguetta invece di essere coperte.
-            gc.setAlpha(hot || dragging ? 130 : 70);
+            gc.setBackground(palette.get(ink));
+            gc.setAlpha(opacity);
             gc.fillRoundRectangle(thumb.x, thumb.y, thumb.width, thumb.height,
                     THUMB_WIDTH, THUMB_WIDTH);
             gc.setAlpha(255);
         } else {
-            // Senza grafica avanzata l'alpha viene ignorato: si disegna solo il
-            // contorno, cosi la linguetta non nasconde comunque nulla.
-            gc.setForeground(gc.getBackground());
-            gc.drawRoundRectangle(thumb.x, thumb.y, thumb.width - 1, thumb.height - 1,
+            // Dove la grafica avanzata manca (Eclipse piu vecchi, driver senza
+            // alpha) la trasparenza va simulata: si mescola a mano il colore
+            // con lo sfondo nella stessa proporzione. Prima si disegnava solo
+            // il contorno, e la linguetta usciva piatta e opaca.
+            gc.setBackground(palette.get(new RGB(
+                    (ink.red * opacity + background.red * (255 - opacity)) / 255,
+                    (ink.green * opacity + background.green * (255 - opacity)) / 255,
+                    (ink.blue * opacity + background.blue * (255 - opacity)) / 255)));
+            gc.fillRoundRectangle(thumb.x, thumb.y, thumb.width, thumb.height,
                     THUMB_WIDTH, THUMB_WIDTH);
         }
     }
