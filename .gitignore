@@ -1,0 +1,10 @@
+# Output di compilazione
+bin/
+target/
+
+# Metadati IDE non condivisi
+.idea/
+*.iml
+.settings/
+.metadata/
+.claude/
