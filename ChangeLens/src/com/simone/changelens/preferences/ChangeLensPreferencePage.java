@@ -40,6 +40,8 @@ public final class ChangeLensPreferencePage extends FieldEditorPreferencePage
                 "Righe modificate", getFieldEditorParent()));
         addField(new ColorFieldEditor(Preferences.DELETED_COLOR,
                 "Righe eliminate", getFieldEditorParent()));
+        addField(new ColorFieldEditor(Preferences.MIXED_COLOR,
+                "Righe modificate e aggiunte insieme", getFieldEditorParent()));
     }
 
     @Override

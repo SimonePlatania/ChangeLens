@@ -11,6 +11,8 @@ public final class Preferences {
     public static final String ADDED_COLOR = "addedColor";
     public static final String MODIFIED_COLOR = "modifiedColor";
     public static final String DELETED_COLOR = "deletedColor";
+    /** Blocco che modifica righe esistenti e ne aggiunge di nuove. */
+    public static final String MIXED_COLOR = "mixedColor";
 
     private Preferences() { }
 }

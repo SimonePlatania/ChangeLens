@@ -130,10 +130,23 @@ final class GitDocumentModel implements AutoCloseable {
                 blocks.add(new RawChange(ChangeBlock.DELETED, anchor, anchor, original));
                 continue;
             }
-            int kind = edit.getLengthA() == 0 ? ChangeBlock.ADDED : ChangeBlock.MODIFIED;
-            blocks.add(new RawChange(kind, edit.getBeginB(), edit.getEndB() - 1, original));
+            blocks.add(new RawChange(kindOf(edit), edit.getBeginB(), edit.getEndB() - 1, original));
         }
         return blocks;
+    }
+
+    /**
+     * Che tipo di cambiamento e questo blocco.
+     *
+     * Un blocco che non tocca nulla in HEAD e una pura aggiunta; uno che
+     * sostituisce righe una a una e una pura modifica. Quando ne riscrive
+     * alcune e nello stesso punto ne aggiunge altre le due cose si sommano, e
+     * non e ne l'una ne l'altra: quel caso ha un colore suo.
+     */
+    private static int kindOf(Edit edit) {
+        if (edit.getLengthA() == 0) return ChangeBlock.ADDED;
+        if (edit.getLengthB() > edit.getLengthA()) return ChangeBlock.MIXED;
+        return ChangeBlock.MODIFIED;
     }
 
     private static String textOf(RawText text, int from, int to) {

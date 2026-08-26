@@ -19,6 +19,8 @@ final class ChangeBlock {
     static final int MODIFIED = 2;
     /** Cancellazione: nessuna riga occupata, il segno sta sul confine. */
     static final int DELETED = 3;
+    /** Righe esistenti riscritte e altre aggiunte nello stesso blocco. */
+    static final int MIXED = 4;
 
     final int kind;
     final String original;
@@ -81,6 +83,7 @@ final class ChangeBlock {
         switch (kind) {
             case ADDED: return "Righe aggiunte";
             case MODIFIED: return "Righe modificate";
+            case MIXED: return "Righe modificate e aggiunte";
             default: return "Righe eliminate";
         }
     }

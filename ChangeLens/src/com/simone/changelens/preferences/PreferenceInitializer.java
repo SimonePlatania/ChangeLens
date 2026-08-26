@@ -22,5 +22,6 @@ public final class PreferenceInitializer extends AbstractPreferenceInitializer {
         store.setDefault(Preferences.ADDED_COLOR, "87,171,90");
         store.setDefault(Preferences.MODIFIED_COLOR, "223,143,53");
         store.setDefault(Preferences.DELETED_COLOR, "199,58,58");
+        store.setDefault(Preferences.MIXED_COLOR, "84,140,205");
     }
 }

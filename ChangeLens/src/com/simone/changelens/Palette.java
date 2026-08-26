@@ -60,6 +60,11 @@ final class Palette {
         return preference(Preferences.DELETED_COLOR, new RGB(199, 58, 58));
     }
 
+    /** Blocco che modifica righe esistenti e ne aggiunge di nuove. */
+    Color mixed() {
+        return preference(Preferences.MIXED_COLOR, new RGB(84, 140, 205));
+    }
+
     Color warning() {
         return get(new RGB(233, 179, 48));
     }
@@ -76,6 +81,7 @@ final class Palette {
         switch (kind) {
             case ChangeBlock.ADDED: return added();
             case ChangeBlock.MODIFIED: return modified();
+            case ChangeBlock.MIXED: return mixed();
             default: return deleted();
         }
     }
