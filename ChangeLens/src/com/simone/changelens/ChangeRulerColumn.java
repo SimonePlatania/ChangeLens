@@ -49,10 +49,13 @@ final class ChangeRulerColumn implements IVerticalRulerColumn {
      */
     private static final int FALLBACK_WIDTH = 38;
     private static final int DELETION_HEIGHT = 6;
-    /** Spazio fra i numeri di riga e la barretta delle modifiche. */
-    private static final int BAR_X = 8;
-    /** Spazio fra il separatore e la prima colonna di codice. */
-    private static final int CODE_GAP = 12;
+    /** Aria fra il separatore e la barretta delle modifiche. */
+    private static final int BAR_GAP = 3;
+    /**
+     * Spazio fra il separatore e la prima colonna di codice. Ci sta dentro la
+     * barretta delle modifiche, che ora vive li in mezzo.
+     */
+    private static final int CODE_GAP = 14;
     /** Pausa prima di aprire il fumetto. */
     private static final int HOVER_DELAY = 320;
 
@@ -202,12 +205,27 @@ final class ChangeRulerColumn implements IVerticalRulerColumn {
                 (foreground.green + background.green * 4) / 5,
                 (foreground.blue + background.blue * 4) / 5)));
         gc.setLineWidth(1);
-        int x = area.x + columnWidth() - CODE_GAP;
+        int x = area.x + separatorX();
         gc.drawLine(x, area.y, x, area.y + area.height);
     }
 
     private int barWidth() {
         return Math.max(3, Math.min(5, columnWidth() / 8));
+    }
+
+    /** L'ascissa del separatore: la riga verticale fra numeri e codice. */
+    private int separatorX() {
+        return columnWidth() - CODE_GAP;
+    }
+
+    /**
+     * La barretta sta subito a destra del separatore, a ridosso del codice,
+     * come negli IDE che mettono l'indicatore fra il righello e il testo. Con
+     * la barretta all'estremita sinistra della colonna finiva prima dei numeri
+     * di riga, lontana dal codice a cui si riferisce.
+     */
+    private int barX() {
+        return separatorX() + BAR_GAP;
     }
 
     private static boolean markers() {
@@ -252,12 +270,13 @@ final class ChangeRulerColumn implements IVerticalRulerColumn {
                 continue;
             }
             gc.setBackground(palette.forChange(block.kind));
+            int x = area.x + barX();
             if (block.kind == ChangeBlock.DELETED) {
-                gc.fillRoundRectangle(BAR_X, span[0] - DELETION_HEIGHT / 2,
+                gc.fillRoundRectangle(x, span[0] - DELETION_HEIGHT / 2,
                         bar + 4, DELETION_HEIGHT, 4, 4);
             } else {
                 int height = Math.max(bar, span[1] - span[0]);
-                gc.fillRoundRectangle(BAR_X, span[0], bar, height, bar, bar);
+                gc.fillRoundRectangle(x, span[0], bar, height, bar, bar);
             }
         }
     }
