@@ -23,25 +23,27 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.ObjectLoader;
 import org.eclipse.jgit.lib.PersonIdent;
 import org.eclipse.jgit.lib.Repository;
-import org.eclipse.jgit.lib.UserConfig;
 import org.eclipse.jgit.treewalk.TreeWalk;
 
 /**
- * Fotografia immutabile del confronto fra una esatta versione in memoria del
- * documento e HEAD. Ogni istanza vale per una sola generazione: quando il
- * documento cambia viene chiusa e ricreata, cosi nessun risultato puo restare
- * attaccato a righe che nel frattempo si sono spostate.
+ * An immutable snapshot of the comparison between one exact in-memory version
+ * of the document and HEAD. Every instance is good for a single generation:
+ * when the document changes it is closed and rebuilt, so no result can stay
+ * attached to lines that have moved in the meantime.
  */
 final class GitDocumentModel implements AutoCloseable {
 
     private final Repository repository;
     private final String path;
+    private final ObjectId head;
     private final RawText committed;
     private final RawText current;
     private final EditList edits;
-    private final String currentUser;
     private final boolean tracked;
     private final Map<Integer, AuthorLabel> authorCache = new HashMap<Integer, AuthorLabel>();
+
+    /** The name JGit uses for uncommitted lines: a placeholder, not an author. */
+    private static final String JGIT_UNCOMMITTED = "Not Committed Yet";
 
     private BlameGenerator generator;
     private BlameResult blame;
@@ -72,12 +74,11 @@ final class GitDocumentModel implements AutoCloseable {
                 }
             }
         }
-        // WS_IGNORE_TRAILING: CRLF contro LF e spazi finali non devono far
-        // apparire modificato un file che e identico a HEAD.
+        // WS_IGNORE_TRAILING: CRLF against LF and trailing spaces must not make
+        // a file that is identical to HEAD look modified.
         EditList edits = DiffAlgorithm.getAlgorithm(DiffAlgorithm.SupportedAlgorithm.HISTOGRAM)
                 .diff(RawTextComparator.WS_IGNORE_TRAILING, committed, current);
-        return new GitDocumentModel(repository, path, committed, current, edits,
-                userNameOf(repository), tracked);
+        return new GitDocumentModel(repository, path, head, committed, current, edits, tracked);
     }
 
     private static Charset charsetOf(IFile file) {
@@ -85,42 +86,30 @@ final class GitDocumentModel implements AutoCloseable {
             String name = file.getCharset();
             if (name != null) return Charset.forName(name);
         } catch (Exception ignored) {
-            // risorsa non disponibile o charset sconosciuto
+            // resource unavailable or charset unknown
         }
         return StandardCharsets.UTF_8;
     }
 
-    private static String userNameOf(Repository repository) {
-        try {
-            UserConfig config = repository.getConfig().get(UserConfig.KEY);
-            String name = config == null ? null : config.getAuthorName();
-            if (name != null && !name.trim().isEmpty()) return name.trim();
-        } catch (Exception ignored) {
-            // nessun user.name configurato
-        }
-        return null;
-    }
-
-    private GitDocumentModel(Repository repository, String path, RawText committed, RawText current,
-            EditList edits, String currentUser, boolean tracked) {
+    private GitDocumentModel(Repository repository, String path, ObjectId head, RawText committed,
+            RawText current, EditList edits, boolean tracked) {
         this.repository = repository;
         this.path = path;
+        this.head = head;
         this.committed = committed;
         this.current = current;
         this.edits = edits;
-        this.currentUser = currentUser;
         this.tracked = tracked;
     }
 
     /**
-     * I blocchi contigui di modifica, con riga di inizio e riga di fine
-     * esatte. Le righe committate e non toccate non producono alcun blocco:
-     * per loro non viene disegnato nulla.
+     * The contiguous change blocks, with exact first and last lines. Committed
+     * and untouched lines produce no block at all: nothing is drawn for them.
      */
     List<RawChange> changes() {
         List<RawChange> blocks = new ArrayList<RawChange>();
-        // File mai committato: senza una versione in HEAD non esiste un
-        // confronto, e colorare tutto il file di verde non direbbe nulla.
+        // A file never committed: with no version in HEAD there is no
+        // comparison, and painting the whole file green would say nothing.
         if (!tracked) return blocks;
         int lastLine = Math.max(0, current.size() - 1);
         for (Edit edit : edits) {
@@ -130,23 +119,25 @@ final class GitDocumentModel implements AutoCloseable {
                 blocks.add(new RawChange(ChangeBlock.DELETED, anchor, anchor, original));
                 continue;
             }
-            blocks.add(new RawChange(kindOf(edit), edit.getBeginB(), edit.getEndB() - 1, original));
+            if (edit.getLengthA() == 0) {
+                blocks.add(new RawChange(ChangeBlock.ADDED, edit.getBeginB(), edit.getEndB() - 1,
+                        original));
+                continue;
+            }
+            // An edit replacing few lines with many is two different things put
+            // together: the first lines rewrite what was there, the rest are
+            // new. Keeping it whole gave a single colour to a block half
+            // modified and half added; split, the new lines come out green and
+            // only the rewritten ones take the rewrite colour, which is what
+            // every other tool shows.
+            int shared = Math.min(edit.getLengthA(), edit.getLengthB());
+            int firstNew = edit.getBeginB() + shared;
+            blocks.add(new RawChange(ChangeBlock.MODIFIED, edit.getBeginB(), firstNew - 1, original));
+            if (firstNew <= edit.getEndB() - 1) {
+                blocks.add(new RawChange(ChangeBlock.ADDED, firstNew, edit.getEndB() - 1, ""));
+            }
         }
         return blocks;
-    }
-
-    /**
-     * Che tipo di cambiamento e questo blocco.
-     *
-     * Un blocco che non tocca nulla in HEAD e una pura aggiunta; uno che
-     * sostituisce righe una a una e una pura modifica. Quando ne riscrive
-     * alcune e nello stesso punto ne aggiunge altre le due cose si sommano, e
-     * non e ne l'una ne l'altra: quel caso ha un colore suo.
-     */
-    private static int kindOf(Edit edit) {
-        if (edit.getLengthA() == 0) return ChangeBlock.ADDED;
-        if (edit.getLengthB() > edit.getLengthA()) return ChangeBlock.MIXED;
-        return ChangeBlock.MODIFIED;
     }
 
     private static String textOf(RawText text, int from, int to) {
@@ -162,7 +153,7 @@ final class GitDocumentModel implements AutoCloseable {
         return tracked;
     }
 
-    /** Etichetta autore per una dichiarazione. Da invocare fuori dal thread UI. */
+    /** The author label for a declaration. To be called off the UI thread. */
     synchronized AuthorLabel author(MethodLens method) {
         if (closed || !tracked) return AuthorLabel.PENDING;
         Integer key = Integer.valueOf(method.declarationLine);
@@ -171,61 +162,69 @@ final class GitDocumentModel implements AutoCloseable {
 
         AuthorLabel value;
         try {
-            boolean dirty = overlaps(method.declarationLine, method.endLine);
-            int oldLine = oldLineFor(method.declarationLine);
-            value = !method.structurallyComplete ? unknown()
-                    : oldLine < 0 ? mine()
-                    : fromBlame(method, oldLine, dirty);
+            value = resolve(method);
         } catch (Exception failure) {
             Activator.log(failure);
-            value = mine();
+            value = AuthorLabel.PENDING;
         }
-        authorCache.put(key, value);
+        if (!value.isPending()) authorCache.put(key, value);
         return value;
     }
 
-    /** Metodo nuovo ma leggibile: e roba scritta da chi sta editando ora. */
-    private AuthorLabel mine() {
-        return currentUser == null ? unknown() : new AuthorLabel(currentUser, 0, true, true);
-    }
-
     /**
-     * Dichiarazione non associabile a HEAD con sicurezza: corpo non chiuso,
-     * graffa mancante, blame senza risposta. In quel caso non si tira a
-     * indovinare un autore, si dichiara {@code new*}.
+     * Who wrote this declaration.
+     *
+     * There is a single criterion: how many of the method's lines already exist
+     * in HEAD. If not one of them does, the method has just been written and
+     * has no author in the history yet: {@code not committed yet}. If even a
+     * single line comes from HEAD then an author exists and the blame is the
+     * one to ask, even when the signature line is among the just-touched ones:
+     * renaming a parameter does not turn the method into someone else's code.
+     *
+     * When the author cannot be established nothing is invented and nothing is
+     * cached: the label stays absent and the next round tries again.
      */
-    private AuthorLabel unknown() {
-        return new AuthorLabel("new", 0, true, true);
-    }
-
-    private AuthorLabel fromBlame(MethodLens method, int oldLine, boolean dirty) throws Exception {
-        ensureBlame();
-        if (blame == null) return mine();
-
-        int min = oldLine;
-        int max = oldLine;
+    private AuthorLabel resolve(MethodLens method) throws Exception {
+        // A declaration still open, a body with no closing brace: the body the
+        // scanner attributes to it runs to the end of the file and would borrow
+        // the lines, and the authors, of the methods below. Until it is closed,
+        // nothing is said.
+        if (!method.structurallyComplete) return AuthorLabel.PENDING;
+        boolean dirty = overlaps(method.declarationLine, method.endLine);
+        int anchor = -1;
+        int min = Integer.MAX_VALUE;
+        int max = -1;
         for (int line = method.declarationLine; line <= method.endLine; line++) {
             int mapped = oldLineFor(line);
             if (mapped < 0) continue;
+            if (anchor < 0) anchor = mapped;
             min = Math.min(min, mapped);
             max = Math.max(max, mapped);
         }
+        if (anchor < 0) return AuthorLabel.notCommitted();
+
+        ensureBlame();
+        if (blame == null) return AuthorLabel.PENDING;
         min = Math.max(0, min);
         max = Math.min(max, committed.size() - 1);
-        if (min > max) return mine();
+        if (min > max) return AuthorLabel.notCommitted();
         blame.computeRange(min, max + 1);
 
-        PersonIdent owner = blame.getSourceAuthor(oldLine);
-        if (owner == null || owner.getName() == null) return unknown();
+        PersonIdent owner = blame.getSourceAuthor(anchor);
+        if (owner == null || owner.getName() == null) return AuthorLabel.PENDING;
 
         String primary = owner.getName();
+        // JGit's fictitious author for lines not yet in a commit: it is a
+        // placeholder, not a person, and must never be shown as an author.
+        if (JGIT_UNCOMMITTED.equals(primary)) return AuthorLabel.notCommitted();
         Set<String> others = new LinkedHashSet<String>();
         for (int line = method.declarationLine; line <= method.endLine; line++) {
             int mapped = oldLineFor(line);
             if (mapped < min || mapped > max) continue;
             PersonIdent contributor = blame.getSourceAuthor(mapped);
             if (contributor != null && contributor.getName() != null
-                    && !primary.equals(contributor.getName())) {
+                    && !primary.equals(contributor.getName())
+                    && !JGIT_UNCOMMITTED.equals(contributor.getName())) {
                 others.add(contributor.getName());
             }
         }
@@ -235,9 +234,14 @@ final class GitDocumentModel implements AutoCloseable {
     private void ensureBlame() throws Exception {
         if (blame != null || blameFailed || closed) return;
         try {
+            // Blame on HEAD, not on the working tree: the lines being compared
+            // are indices inside the committed version, and prepareHead() would
+            // have started the blame from the file on disk. That is where the
+            // out-of-step lines and the fictitious "Not Committed Yet" author
+            // came from.
             generator = new BlameGenerator(repository, path);
             generator.setFollowFileRenames(true);
-            generator.prepareHead();
+            generator.push(null, head);
             blame = generator.computeBlameResult();
         } catch (Exception failure) {
             blameFailed = true;
@@ -245,7 +249,7 @@ final class GitDocumentModel implements AutoCloseable {
         }
     }
 
-    /** Riga corrispondente in HEAD, oppure -1 se la riga e nuova o modificata. */
+    /** The matching line in HEAD, or -1 when the line is new or modified. */
     private int oldLineFor(int newLine) {
         int delta = 0;
         for (Edit edit : edits) {
@@ -273,7 +277,7 @@ final class GitDocumentModel implements AutoCloseable {
             try {
                 generator.close();
             } catch (Exception ignored) {
-                // in chiusura non c'e nulla da recuperare
+                // nothing to recover while closing down
             }
         }
         generator = null;

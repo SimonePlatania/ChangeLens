@@ -23,20 +23,21 @@ import org.eclipse.jface.text.Position;
 import org.eclipse.swt.widgets.Display;
 
 /**
- * Stato condiviso di un editor: diff verso HEAD, dichiarazioni e autori.
+ * The shared state of one editor: the diff against HEAD, the declarations and
+ * their authors.
  *
- * Due garanzie che reggono tutto il resto:
+ * Two guarantees hold up everything else:
  *
- * 1. i blocchi di modifica sono {@link Position} registrate nel documento, che
- *    Eclipse aggiorna a ogni battitura: restano incollati alle righe di inizio
- *    e fine del cambiamento, qualunque cosa succeda sopra di loro;
- * 2. una modifica non azzera mai lo stato visibile. Le barre restano dove
- *    sono e vengono sostituite solo quando il nuovo diff e pronto, quindi non
- *    c'e nessun lampeggio fra il vecchio e il nuovo risultato.
+ * 1. change blocks are {@link Position}s registered with the document, which
+ *    Eclipse updates on every keystroke: they stay glued to the first and last
+ *    line of the change, whatever happens above them;
+ * 2. an edit never wipes the visible state. The bars stay where they are and
+ *    are replaced only once the new diff is ready, so there is no flicker
+ *    between the old result and the new one.
  */
 final class LensController implements IDocumentListener {
 
-    /** Attesa dopo l'ultima digitazione prima di ricalcolare il diff. */
+    /** How long after the last keystroke the diff is recomputed. */
     private static final int DEBOUNCE = 400;
 
     private final ITextViewer viewer;
@@ -46,7 +47,7 @@ final class LensController implements IDocumentListener {
 
     private final Map<Integer, AuthorLabel> labels = new HashMap<Integer, AuthorLabel>();
     private final Set<Integer> requested = new HashSet<Integer>();
-    /** Etichette ancora valide da mostrare, ma da ricalcolare appena possibile. */
+    /** Labels still fine to show, but due for recomputation as soon as possible. */
     private final Set<Integer> stale = new HashSet<Integer>();
 
     private IDocument anchored;
@@ -79,6 +80,10 @@ final class LensController implements IDocumentListener {
         listeners.remove(listener);
     }
 
+    IFile file() {
+        return file;
+    }
+
     IDocument document() {
         return viewer.getDocument();
     }
@@ -96,12 +101,12 @@ final class LensController implements IDocumentListener {
     }
 
     /**
-     * Etichetta per la dichiarazione, oppure {@code null} se non e mai stata
-     * calcolata.
+     * The label for a declaration, or {@code null} when it has never been
+     * computed.
      *
-     * Se l'etichetta c'e ma e da rinfrescare, viene restituita comunque e il
-     * ricalcolo parte in sottofondo: il nome resta sotto gli occhi mentre si
-     * scrive invece di sparire e ricomparire al primo scorrimento.
+     * If the label is there but due for a refresh it is returned anyway and the
+     * recomputation starts in the background: the name stays in sight while
+     * typing instead of vanishing and coming back on the first scroll.
      */
     AuthorLabel label(int declarationLine) {
         Integer key = Integer.valueOf(declarationLine);
@@ -111,12 +116,31 @@ final class LensController implements IDocumentListener {
         if (wanted && method != null && model != null && requested.add(key)) {
             queueAuthors();
         }
+        // A freshly written signature drags along the label of whoever was on
+        // that line an instant earlier, and for as long as the recomputation
+        // takes one reads an author instead of "not committed yet". On a line
+        // the diff calls added, the old label is worth nothing: in its place
+        // goes what is already known.
+        if (label != null && stale.contains(key) && isAdded(declarationLine)) {
+            return method != null && method.structurallyComplete ? AuthorLabel.notCommitted() : null;
+        }
         return label;
     }
 
+    /** The line belongs to a block of lines added with respect to HEAD. */
+    private boolean isAdded(int line) {
+        IDocument document = viewer.getDocument();
+        if (document == null || snapshot.isEmpty()) return false;
+        for (ChangeBlock block : snapshot.blocks) {
+            if (!block.isValid() || block.kind != ChangeBlock.ADDED) continue;
+            if (line >= block.startLine(document) && line <= block.endLine(document)) return true;
+        }
+        return false;
+    }
+
     /**
-     * Il metodo ha modifiche non committate secondo il diff corrente.
-     * Serve a mostrare l'asterisco subito, senza attendere il blame.
+     * The method has uncommitted changes according to the current diff. It is
+     * what shows the asterisk at once, without waiting for the blame.
      */
     boolean isDirty(int declarationLine) {
         MethodLens method = methods.get(Integer.valueOf(declarationLine));
@@ -149,8 +173,8 @@ final class LensController implements IDocumentListener {
         cancel(authors);
         analysis = null;
         authors = null;
-        // Le Position dei blocchi le ha gia aggiornate il documento.
-        // Alle dichiarazioni basta lo scorrimento delle righe sotto la modifica.
+        // The document has already updated the blocks' Positions. For the
+        // declarations, shifting the lines below the edit is enough.
         int delta = event.getDocument().getNumberOfLines() - lineCountBefore;
         shiftMethods(delta);
         markLive(event.getDocument(), delta);
@@ -159,14 +183,14 @@ final class LensController implements IDocumentListener {
     }
 
     /**
-     * Colora subito le righe appena toccate, senza aspettare il confronto con
-     * HEAD: premuto invio la nuova riga e verde all'istante, e una riga
-     * riscritta diventa arancione mentre si digita. Quando il diff vero arriva
-     * sostituisce in blocco queste marcature provvisorie.
+     * Colours the just-touched lines at once, without waiting for the
+     * comparison against HEAD: press Enter and the new line is green
+     * immediately, and a rewritten line takes its colour while being typed.
+     * When the real diff arrives it replaces all of these provisional marks.
      */
     private void markLive(IDocument document, int delta) {
-        // Senza repository, o su un file mai committato, non c'e niente con cui
-        // confrontarsi: nessuna riga va colorata.
+        // With no repository, or on a file never committed, there is nothing to
+        // compare against: no line gets coloured.
         if (document == null || model == null || !model.isTracked()) return;
         int from = Math.max(0, changeLine);
         int to = delta > 0 ? from + delta : from;
@@ -183,18 +207,18 @@ final class LensController implements IDocumentListener {
         int end = neighbour.kind == ChangeBlock.DELETED ? start : neighbour.endLine(document);
         if (neighbour.kind != ChangeBlock.DELETED && start <= from && end >= to) return;
 
-        // Il blocco accanto viene esteso fino a coprire anche le righe nuove.
-        // Aggiungerne uno separato lascerebbe la vecchia barra dov'era e la
-        // riga appena toccata senza indicatore.
+        // The neighbouring block is stretched to cover the new lines too.
+        // Adding a separate one would leave the old bar where it was and the
+        // just-touched line with no marker at all.
         int kind = neighbour.kind == ChangeBlock.ADDED ? ChangeBlock.ADDED : ChangeBlock.MODIFIED;
         remove(neighbour);
         add(document, kind, Math.min(start, from), Math.max(end, to));
     }
 
     /**
-     * Il blocco che copre o confina con le righe indicate.
-     * Confinare basta: una riga scritta a ridosso di un cambiamento fa parte
-     * dello stesso cambiamento, non ne apre un altro.
+     * The block covering or bordering the given lines.
+     * Bordering is enough: a line written right against a change belongs to
+     * that same change, it does not open another one.
      */
     private ChangeBlock touching(IDocument document, int from, int to) {
         for (ChangeBlock block : snapshot.blocks) {
@@ -225,7 +249,7 @@ final class LensController implements IDocumentListener {
             try {
                 anchored.removePosition(block.position());
             } catch (Exception ignored) {
-                // gia rimossa insieme al documento
+                // already removed along with the document
             }
         }
         List<ChangeBlock> rest = new ArrayList<ChangeBlock>(snapshot.blocks);
@@ -233,12 +257,12 @@ final class LensController implements IDocumentListener {
         snapshot = new GitSnapshot(rest);
     }
 
-    /** Sposta dichiarazioni ed etichette gia note, invece di farle sparire. */
+    /** Shifts the known declarations and labels instead of making them vanish. */
     private void shiftMethods(int delta) {
         if (methods.isEmpty()) return;
         if (delta == 0) {
-            // Il testo di una riga e cambiato: la dichiarazione va rivista, ma
-            // il nome resta a video finche il nuovo valore non e pronto.
+            // The text of a line changed: the declaration needs revisiting, but
+            // the name stays on screen until the new value is ready.
             stale.add(Integer.valueOf(changeLine));
             requested.remove(Integer.valueOf(changeLine));
             return;
@@ -281,7 +305,7 @@ final class LensController implements IDocumentListener {
         if (document == null) return;
         final String text = document.get();
         cancel(analysis);
-        analysis = new Job("ChangeLens: confronto con HEAD") {
+        analysis = new Job("ChangeLens: comparing against HEAD") {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
                 GitDocumentModel fresh = null;
@@ -324,6 +348,13 @@ final class LensController implements IDocumentListener {
                 model = fresh;
                 if (previous != null) previous.close();
                 adopt(declarations);
+                // The blocks come from the comparison against HEAD, not from
+                // the editor's quick diff: that one, unless configured by hand,
+                // refers to the last saved version, so on every save it called
+                // the file clean and all the markers disappeared. Comparing
+                // against HEAD is also the only reading consistent with "not
+                // committed yet" and with the authors. Its line-by-line verdict
+                // - rewritten or added - is the quick diff's own.
                 anchor(changes);
                 fireRefresh();
             }
@@ -331,9 +362,9 @@ final class LensController implements IDocumentListener {
     }
 
     /**
-     * Prende le nuove dichiarazioni tenendo le etichette gia note per quelle
-     * che stanno ancora alla stessa riga: restano visibili e vengono solo
-     * rinfrescate, invece di sparire per il tempo del ricalcolo.
+     * Takes the new declarations while keeping the known labels for those still
+     * on the same line: they stay visible and are merely refreshed, instead of
+     * disappearing for as long as the recomputation takes.
      */
     private void adopt(Map<Integer, MethodLens> declarations) {
         Map<Integer, AuthorLabel> carried = new HashMap<Integer, AuthorLabel>();
@@ -348,7 +379,7 @@ final class LensController implements IDocumentListener {
         stale.addAll(carried.keySet());
     }
 
-    /** Registra i nuovi blocchi come Position del documento e libera i vecchi. */
+    /** Registers the new blocks as document Positions and releases the old ones. */
     private void anchor(List<RawChange> changes) {
         IDocument document = viewer.getDocument();
         releasePositions();
@@ -378,7 +409,7 @@ final class LensController implements IDocumentListener {
             try {
                 anchored.removePosition(block.position());
             } catch (Exception ignored) {
-                // la Position puo essere gia stata rimossa con il documento
+                // the Position may already have gone with the document
             }
         }
         anchored = null;
@@ -386,9 +417,10 @@ final class LensController implements IDocumentListener {
     }
 
     /**
-     * Un solo Job autori alla volta: le richieste che arrivano mentre uno gira
-     * vengono servite dal giro successivo, cosi lo scorrimento veloce non
-     * genera decine di blame concorrenti.
+     * One author Job at a time: requests arriving while one is running are
+     * served by the very next round, so fast scrolling does not spawn dozens of
+     * concurrent blames, and nothing sits in the queue waiting for a paint
+     * event to move it along.
      */
     private void queueAuthors() {
         if (authors != null || model == null || requested.isEmpty()) return;
@@ -401,7 +433,7 @@ final class LensController implements IDocumentListener {
         }
         if (batch.isEmpty()) return;
 
-        authors = new Job("ChangeLens: autori") {
+        authors = new Job("ChangeLens: authors") {
             @Override
             protected IStatus run(IProgressMonitor monitor) {
                 final Map<Integer, AuthorLabel> found = new HashMap<Integer, AuthorLabel>();
@@ -419,6 +451,11 @@ final class LensController implements IDocumentListener {
                         requested.removeAll(found.keySet());
                         stale.removeAll(found.keySet());
                         fireRefresh();
+                        // Requests that arrived while the Job was running are
+                        // still queued: they have to be served now, not at the
+                        // next paint. Without this round the label of a
+                        // freshly written method only appeared after a scroll.
+                        queueAuthors();
                     }
                 });
                 return Status.OK_STATUS;
@@ -429,9 +466,9 @@ final class LensController implements IDocumentListener {
     }
 
     /**
-     * Notifica i disegnatori una sola volta per ciclo di eventi. Coalescere
-     * qui e cio che impedisce catene ridisegno/ricalcolo che rientrano su se
-     * stesse fino a esaurire lo stack.
+     * Notifies the painters once per event loop turn. Coalescing here is what
+     * stops repaint/recompute chains from re-entering themselves until the
+     * stack runs out.
      */
     private void fireRefresh() {
         if (refreshScheduled || disposed || display.isDisposed()) return;

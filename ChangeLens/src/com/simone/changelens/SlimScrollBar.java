@@ -22,14 +22,12 @@ import org.eclipse.swt.widgets.Scrollable;
 import com.simone.changelens.preferences.Preferences;
 
 /**
- * Sostituisce la barra di scorrimento verticale di sistema con una linguetta
- * stondata disegnata sulla stessa striscia dei segnaposto, senza binario ne
- * frecce: dietro resta lo sfondo dell'editor, e gli indicatori di modifica,
- * errore e warning convivono con la linguetta invece di stare in due colonne
- * separate.
+ * Replaces the system vertical scroll bar with a rounded thumb drawn on the
+ * very strip that carries the markers, with no track and no arrows: behind it
+ * stays the editor background, and the change, error and warning markers live
+ * alongside the thumb instead of sitting in two separate columns.
  *
- * La barra nativa viene solo nascosta: allo smontaggio torna esattamente
- * com'era.
+ * The native bar is only hidden: on teardown it goes back exactly as it was.
  */
 final class SlimScrollBar {
 
@@ -87,7 +85,7 @@ final class SlimScrollBar {
             nativeBarWasVisible = bar.isVisible();
             bar.setVisible(false);
         }
-        // aggiunto per ultimo: la linguetta finisce sopra i segnaposto nativi
+        // added last: the thumb ends up above the native markers
         strip.addPaintListener(painter);
         viewer.addViewportListener(viewport);
 
@@ -141,10 +139,10 @@ final class SlimScrollBar {
             }
         });
 
-        // Senza questo la linguetta compariva solo al primo scorrimento: era
-        // l'evento di viewport a farla disegnare. All'apertura dell'editor il
-        // conteggio righe e l'altezza utile non sono ancora definitivi, quindi
-        // si ridisegna subito e di nuovo a impaginazione avvenuta.
+        // Without this the thumb only showed up on the first scroll: it was
+        // the viewport event that had it drawn. When the editor opens, the
+        // line count and the usable height are not final yet, so it paints now
+        // and again once the layout has settled.
         refresh();
         widget.getDisplay().asyncExec(new Runnable() {
             @Override
@@ -177,18 +175,18 @@ final class SlimScrollBar {
         int opacity = hot || dragging ? 130 : 70;
 
         if (gc.getAdvanced()) {
-            // Semitrasparente: le tacche di errori e warning restano leggibili
-            // sotto la linguetta invece di essere coperte.
+            // Semi-transparent: the error and warning ticks stay readable
+            // under the thumb instead of being covered by it.
             gc.setBackground(palette.get(ink));
             gc.setAlpha(opacity);
             gc.fillRoundRectangle(thumb.x, thumb.y, thumb.width, thumb.height,
                     THUMB_WIDTH, THUMB_WIDTH);
             gc.setAlpha(255);
         } else {
-            // Dove la grafica avanzata manca (Eclipse piu vecchi, driver senza
-            // alpha) la trasparenza va simulata: si mescola a mano il colore
-            // con lo sfondo nella stessa proporzione. Prima si disegnava solo
-            // il contorno, e la linguetta usciva piatta e opaca.
+            // Where advanced graphics are missing (older Eclipse, drivers
+            // without alpha) the transparency has to be faked: the colour is
+            // blended with the background by hand in the same proportion.
+            // Drawing only the outline, as it used to, came out flat and hard.
             gc.setBackground(palette.get(new RGB(
                     (ink.red * opacity + background.red * (255 - opacity)) / 255,
                     (ink.green * opacity + background.green * (255 - opacity)) / 255,
@@ -198,7 +196,29 @@ final class SlimScrollBar {
         }
     }
 
-    /** Il punto e sulla linguetta: li il fumetto non deve comparire. */
+    /** Repaints the thumb. Whoever opens windows over the strip puts it back on screen. */
+    void repaint() {
+        refresh();
+    }
+
+    /**
+     * Scrolls by a few lines, the way the wheel would on the native bar. The
+     * overview strip needs it: there the wheel has to move the page, not the
+     * bubble.
+     */
+    void scrollByLines(int lines) {
+        if (disposed || widget.isDisposed() || lines == 0) return;
+        int step = Math.max(1, widget.getLineHeight());
+        int max = Math.max(0, totalPixels() - widget.getClientArea().height);
+        int top = Math.max(0, Math.min(max, widget.getTopPixel() - lines * step));
+        widget.setTopPixel(top);
+        // As with dragging: setTopPixel does not go through the system bar, so
+        // there is no viewport event and the columns have to be told.
+        if (onScroll != null) onScroll.run();
+        refresh();
+    }
+
+    /** The point is on the thumb: the bubble must not appear there. */
     boolean isOnThumb(int y) {
         Rectangle thumb = thumb();
         return thumb != null && y >= thumb.y - 2 && y <= thumb.y + thumb.height + 2;
@@ -208,7 +228,7 @@ final class SlimScrollBar {
         return dragging;
     }
 
-    /** Geometria della linguetta, in proporzione alla porzione di file visibile. */
+    /** Thumb geometry, in proportion to the visible share of the file. */
     private Rectangle thumb() {
         if (strip == null || strip.isDisposed() || widget.isDisposed()) return null;
         Rectangle area = strip.getClientArea();
@@ -217,10 +237,9 @@ final class SlimScrollBar {
         if (total <= 0 || visible <= 0 || visible >= total) return null;
 
         int track = Math.max(1, area.height - 2 * MARGIN);
-        // Lunghezza proporzionale alla porzione di file visibile, senza tetto:
-        // file corto, linguetta lunga; file lungo, linguetta corta. Un massimo
-        // fisso avrebbe fatto sembrare uguali un file di 200 righe e uno di
-        // 5000.
+        // Length in proportion to the visible share of the file, with no cap:
+        // short file, long thumb; long file, short thumb. A fixed maximum
+        // would have made a 200-line file and a 5000-line one look alike.
         int height = Math.max(MIN_THUMB, (int) ((long) track * visible / total));
         height = Math.min(height, track);
         int top = MARGIN + (int) ((long) (track - height) * widget.getTopPixel()
@@ -245,9 +264,9 @@ final class SlimScrollBar {
         int track = Math.max(1, area.height - 2 * MARGIN - thumb.height);
         int clamped = Math.max(0, Math.min(track, thumbTop - MARGIN));
         widget.setTopPixel((int) ((long) clamped * (total - visible) / track));
-        // setTopPixel sposta il testo senza passare dalla barra di sistema,
-        // quindi il viewer non emette alcun evento di viewport: le colonne
-        // vanno avvisate a mano, o le barre restano indietro.
+        // setTopPixel moves the text without going through the system bar, so
+        // the viewer fires no viewport event: the columns have to be told by
+        // hand, or the bars fall behind.
         if (onScroll != null) onScroll.run();
         refresh();
     }
@@ -271,7 +290,7 @@ final class SlimScrollBar {
         try {
             viewer.removeViewportListener(viewport);
         } catch (Exception ignored) {
-            // viewer gia smontato
+            // viewer already torn down
         }
         if (strip != null && !strip.isDisposed()) strip.removePaintListener(painter);
         if (!widget.isDisposed()) {

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChangeLens &mdash; update site</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa;
+    --fg: #1d1d1f;
+    --muted: #6a6a70;
+    --line: #e0e0dd;
+    --card: #ffffff;
+    --accent: #548ccd;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17181a;
+      --fg: #e9e9ea;
+      --muted: #9a9aa2;
+      --line: #2c2e31;
+      --card: #1e1f22;
+      --accent: #6ea3e0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 3rem 1.25rem 4rem;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 46rem; margin: 0 auto; }
+  h1 { font-size: 1.9rem; margin: 0 0 .35rem; letter-spacing: -.01em; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .6rem; }
+  p.lead { color: var(--muted); margin: 0 0 2rem; }
+  .url {
+    display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    background: var(--card); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px; padding: .85rem 1rem; margin: 0 0 1rem;
+  }
+  .url code { font: 14px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; word-break: break-all; }
+  button {
+    margin-left: auto; border: 1px solid var(--line); background: transparent;
+    color: var(--fg); border-radius: 7px; padding: .35rem .7rem; cursor: pointer; font-size: .85rem;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent); }
+  ol, ul { padding-left: 1.25rem; }
+  li { margin: .3rem 0; }
+  code { background: var(--card); border: 1px solid var(--line); border-radius: 5px; padding: .1em .35em; font-size: .9em; }
+  table { border-collapse: collapse; width: 100%; margin-top: .5rem; font-size: .95rem; }
+  th, td { text-align: left; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 600; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .875rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>ChangeLens</h1>
+  <p class="lead">Update site p2 per il plug-in Eclipse: barre delle modifiche accanto al codice e autore della dichiarazione a fine riga.</p>
+
+  <div class="url">
+    <code id="site">https://simoneplatania.github.io/ChangeLens/</code>
+    <button type="button" onclick="navigator.clipboard&amp;&amp;navigator.clipboard.writeText(document.getElementById('site').textContent)">Copia</button>
+  </div>
+
+  <h2>Installazione</h2>
+  <ol>
+    <li>In Eclipse: <code>Help &gt; Install New Software&hellip;</code></li>
+    <li><code>Add&hellip;</code>, incollare l'indirizzo qui sopra come <em>Location</em>.</li>
+    <li>Selezionare la categoria <strong>ChangeLens</strong> e proseguire.</li>
+    <li>Riavviare Eclipse quando richiesto.</li>
+  </ol>
+  <p>Il plug-in non e firmato: Eclipse chiede conferma per il contenuto non attendibile.</p>
+
+  <h2>Versione pubblicata</h2>
+  <table>
+    <tr><th>Versione</th><th>Bundle</th></tr>
+    <tr><td>0.16.0</td><td><a href="plugins/com.simone.changelens_0.16.0.jar">com.simone.changelens_0.16.0.jar</a></td></tr>
+  </table>
+
+  <h2>Requisiti</h2>
+  <ul>
+    <li>Eclipse 3.6 o successivo, Java 8;</li>
+    <li>EGit/JGit installati, file dentro un repository Git.</li>
+  </ul>
+
+  <footer>
+    Sorgenti e istruzioni su <a href="https://github.com/SimonePlatania/ChangeLens">github.com/SimonePlatania/ChangeLens</a>.
+  </footer>
+</main>
+</body>
+</html>

@@ -1,6 +1,6 @@
 package com.simone.changelens;
 
-/** Una dichiarazione riconosciuta nel documento, con il suo corpo. */
+/** A declaration recognised in the document, together with its body. */
 final class MethodLens {
     final int declarationLine;
     final int endLine;

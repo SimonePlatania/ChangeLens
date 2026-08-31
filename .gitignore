@@ -8,3 +8,6 @@ target/
 .settings/
 .metadata/
 .claude/
+
+# Configurazione locale degli strumenti
+.mcp.json

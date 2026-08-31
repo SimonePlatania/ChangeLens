@@ -5,7 +5,7 @@ import java.util.List;
 
 import org.eclipse.jface.text.IDocument;
 
-/** Insieme dei blocchi di modifica ancorati al documento. */
+/** The set of change blocks anchored to the document. */
 final class GitSnapshot {
 
     static final GitSnapshot EMPTY = new GitSnapshot(Collections.<ChangeBlock>emptyList());
@@ -20,7 +20,7 @@ final class GitSnapshot {
         return blocks.isEmpty();
     }
 
-    /** Blocco che copre la riga indicata, o la cancellazione ancorata su di essa. */
+    /** The block covering the given line, or the deletion anchored on it. */
     ChangeBlock at(IDocument document, int line) {
         for (ChangeBlock block : blocks) {
             if (!block.isValid() || block.kind == ChangeBlock.DELETED) continue;

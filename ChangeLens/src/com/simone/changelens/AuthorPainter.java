@@ -26,18 +26,20 @@ import org.eclipse.swt.widgets.Display;
 import com.simone.changelens.preferences.Preferences;
 
 /**
- * Disegna il nome dell'autore in coda alla dichiarazione: icona a due
- * sagome, nome, {@code +N} per gli altri autori del corpo e {@code *} se il
- * metodo ha modifiche non ancora committate. L'etichetta e cliccabile: apre le
- * revisioni di Eclipse colorate per autore, e al clic successivo le chiude.
+ * Draws the author name after the declaration: an icon, the name, {@code +N}
+ * for the other authors of the body, and {@code *} when the method has
+ * uncommitted changes. The label is clickable: it opens Eclipse's revisions
+ * coloured by author, and the next click closes them again.
  *
- * Il metodo di disegno non calcola nulla e non richiede mai un ridisegno:
- * legge solo cio che il controller ha gia pronto.
+ * A declaration that does not exist in HEAD yet has no author: in its place
+ * comes {@code not committed yet*}, with an icon of its own and no click.
+ *
+ * The painting method computes nothing and never asks for a repaint: it only
+ * reads what the controller already has ready.
  */
 final class AuthorPainter implements PaintListener {
 
     private static final int GAP = 18;
-    private static final int ICON_WIDTH = 13;
 
     private final LensController controller;
     private final ITextViewer viewer;
@@ -52,6 +54,7 @@ final class AuthorPainter implements PaintListener {
 
     private RevisionToggle revisions;
     private Font font;
+    private Font fontSource;
     private Hit hovered;
     private boolean painting;
     private int failures;
@@ -120,7 +123,7 @@ final class AuthorPainter implements PaintListener {
             hits.clear();
             if (enabled()) draw(event.gc);
         } catch (Throwable failure) {
-            // meglio perdere le etichette che far cadere il loop degli eventi
+            // better to lose the labels than to bring the event loop down
             failures++;
             Activator.log(failure instanceof Exception
                     ? (Exception) failure : new RuntimeException(String.valueOf(failure)));
@@ -140,7 +143,6 @@ final class AuthorPainter implements PaintListener {
         boolean icon = preference(Preferences.AUTHOR_ICON);
 
         Color idle = palette.author(widget.getForeground().getRGB(), widget.getBackground().getRGB());
-        Color active = palette.authorHover(widget.getForeground().getRGB(), widget.getBackground().getRGB());
 
         Font previous = gc.getFont();
         gc.setFont(labelFont(display));
@@ -164,50 +166,90 @@ final class AuthorPainter implements PaintListener {
 
             int lineHeight = widget.getLineHeight(widget.getOffsetAtLine(widgetLine));
             Point extent = gc.textExtent(text);
-            int x = end.x + GAP;
+            // Icon and spacing follow the text height: zoomed out, an icon of
+            // fixed size would end up taller than the line itself.
+            int mark = Math.max(5, Math.min(11, extent.y - 3));
+            int markWidth = mark + 3;
+            int x = end.x + Math.max(6, Math.min(GAP, extent.y + 4));
             int y = end.y + Math.max(0, (lineHeight - extent.y) / 2);
-            boolean hot = hovered != null && hovered.line == line;
-            Color ink = hot ? active : idle;
-            gc.setForeground(ink);
+            boolean pinned = label.isNotCommitted();
+            boolean hot = !pinned && hovered != null && hovered.line == line;
+            // The icon carries the colour; the name stays grey and does not
+            // compete with the code. Under the mouse the name takes the shade
+            // of its icon: that is how the two are said to be one thing.
+            Color ink = tint(palette, label, controller.isDirty(line), idle);
+            gc.setForeground(hot ? ink : idle);
 
             int textX = x;
             if (icon) {
-                drawPeople(gc, ink, x, y + (extent.y - 8) / 2);
-                textX += ICON_WIDTH;
+                int markY = y + Math.max(0, (extent.y - mark) / 2);
+                if (pinned) {
+                    drawSpark(gc, ink, x, markY, mark);
+                } else {
+                    drawAuthorMark(gc, ink, x, markY, mark);
+                }
+                textX += markWidth;
+                gc.setForeground(hot ? ink : idle);
             }
             gc.drawString(text, textX, y, true);
             if (hot) {
                 int underline = y + extent.y - 1;
                 gc.drawLine(textX, underline, textX + extent.x, underline);
             }
-            hits.add(new Hit(new Rectangle(x - 2, end.y, ICON_WIDTH + extent.x + 6, lineHeight), line));
+            // The notice is not clickable: there is no revision to open for
+            // code that does not exist in the history yet.
+            if (!pinned) {
+                hits.add(new Hit(new Rectangle(x - 2, end.y, markWidth + extent.x + 6, lineHeight), line));
+            }
         }
         gc.setFont(previous);
     }
 
     /**
-     * Due sagome stilizzate, la stessa icona usata dalle lens degli IDE.
-     *
-     * Sagome piene, non contorni: a 1px l'antialias scaricava il tratto e
-     * l'icona finiva piu chiara del nome pur avendo lo stesso colore. Il
-     * riempimento le tiene esattamente sulla tinta dell'autore.
+     * The notice icon: a small plus sign. It has to read at a glance as "not a
+     * person": freshly written code has no author in the history to show.
      */
-    private void drawPeople(GC gc, Color ink, int x, int y) {
+    private void drawSpark(GC gc, Color ink, int x, int y, int size) {
         Color background = gc.getBackground();
+        int thickness = Math.max(1, size / 5);
+        int middle = (size - thickness) / 2;
         gc.setBackground(ink);
-        // figura dietro, leggermente piu piccola e alzata
-        gc.fillOval(x, y + 1, 4, 4);
-        gc.fillArc(x - 1, y + 4, 7, 8, 0, 180);
-        // Stacco nel colore dell'editor: piene, le due sagome si toccano e
-        // diventerebbero una macchia sola.
-        gc.setBackground(widget.getBackground());
-        gc.fillOval(x + 4, y - 1, 7, 7);
-        gc.fillArc(x + 2, y + 4, 11, 11, 0, 180);
-        // figura davanti
-        gc.setBackground(ink);
-        gc.fillOval(x + 5, y, 5, 5);
-        gc.fillArc(x + 3, y + 5, 9, 9, 0, 180);
+        gc.fillRectangle(x + middle, y, thickness, size);
+        gc.fillRectangle(x, y + middle, size, thickness);
         gc.setBackground(background);
+    }
+
+    /**
+     * A single figure inside a circle, not the two figures side by side: those
+     * belong to another IDE's lenses, and this plug-in is not that one. The
+     * circle gives it a shape of its own, recognisable even at 11 pixels.
+     */
+    private void drawAuthorMark(GC gc, Color ink, int x, int y, int size) {
+        Color background = gc.getBackground();
+        int head = Math.max(2, size * 2 / 5);
+        int shoulders = Math.max(3, size * 4 / 5);
+        gc.setForeground(ink);
+        gc.setLineWidth(1);
+        gc.drawOval(x, y, size, size);
+        gc.setBackground(ink);
+        // head and shoulders, kept inside the circle
+        gc.fillOval(x + (size - head) / 2, y + size / 5, head, head);
+        gc.fillArc(x + (size - shoulders) / 2, y + size / 2, shoulders, shoulders, 0, 180);
+        gc.setBackground(background);
+    }
+
+    /**
+     * The colour says what kind of line it is before a word of it is read:
+     * green where the body has more than one author, orange where there are
+     * uncommitted changes, blue where the code is committed and untouched, grey
+     * for the never-committed notice. The icon carries it, and the name only
+     * while the mouse is over it.
+     */
+    private Color tint(Palette palette, AuthorLabel label, boolean dirtyNow, Color idle) {
+        if (label.isNotCommitted()) return idle;
+        if (label.additionalAuthors > 0) return palette.added();
+        if (label.dirty || dirtyNow) return palette.attention();
+        return palette.mixed();
     }
 
     private Point endOfLine(IDocument document, int line) {
@@ -221,14 +263,28 @@ final class AuthorPainter implements PaintListener {
         }
     }
 
+    /**
+     * The label font: the editor's, one point smaller.
+     *
+     * It has to be rebuilt every time the editor changes its own, or the old
+     * one survives a zoom: enlarging the page left the name small, and
+     * shrinking it left the name large next to tiny code. The editor font
+     * itself is the proof of the change, since zooming hands the widget a new
+     * Font instance. The point is only taken off while there is room to take
+     * it: below six points, with the zoom all the way out, a fixed floor would
+     * have left the name twice the size of the code it belongs to.
+     */
     private Font labelFont(Display display) {
-        if (font != null && !font.isDisposed()) return font;
-        FontData[] data = widget.getFont().getFontData();
+        Font editorFont = widget.getFont();
+        if (font != null && !font.isDisposed() && editorFont.equals(fontSource)) return font;
+        FontData[] data = editorFont.getFontData();
         for (FontData item : data) {
             item.setStyle(SWT.NORMAL);
-            item.setHeight(Math.max(6, item.getHeight() - 2));
+            item.setHeight(item.getHeight() > 6 ? item.getHeight() - 1 : item.getHeight());
         }
+        if (font != null && !font.isDisposed()) font.dispose();
         font = new Font(display, data);
+        fontSource = editorFont;
         return font;
     }
 
@@ -236,7 +292,7 @@ final class AuthorPainter implements PaintListener {
         this.revisions = toggle;
     }
 
-    /** Il clic sul nome apre le revisioni colorate per autore; il clic dopo le chiude. */
+    /** A click on the name opens the revisions coloured by author; the next one closes them. */
     private void toggleRevisions() {
         if (revisions != null) revisions.toggle();
     }

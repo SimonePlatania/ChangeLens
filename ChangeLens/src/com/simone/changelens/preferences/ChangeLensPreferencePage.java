@@ -14,38 +14,38 @@ public final class ChangeLensPreferencePage extends FieldEditorPreferencePage
     public ChangeLensPreferencePage() {
         super(GRID);
         setPreferenceStore(Activator.getDefault().getPreferenceStore());
-        setDescription("Indicatori Git e autori inline negli editor di testo. "
-                + "Le modifiche si applicano subito agli editor aperti.");
+        setDescription("Git indicators and inline authors in text editors. "
+                + "Changes take effect immediately in editors that are already open.");
     }
 
     @Override
     protected void createFieldEditors() {
         addField(new BooleanFieldEditor(Preferences.ENABLED,
-                "Abilita ChangeLens", getFieldEditorParent()));
+                "Enable ChangeLens", getFieldEditorParent()));
         addField(new BooleanFieldEditor(Preferences.CHANGE_MARKERS,
-                "Barre delle modifiche accanto al testo", getFieldEditorParent()));
+                "Change bars next to the code", getFieldEditorParent()));
         addField(new BooleanFieldEditor(Preferences.HIDE_NATIVE_QUICK_DIFF,
-                "Nascondi Quick Diff di Eclipse negli editor gestiti", getFieldEditorParent()));
+                "Hide Eclipse's Quick Diff in managed editors", getFieldEditorParent()));
         addField(new BooleanFieldEditor(Preferences.SLIM_SCROLLBAR,
-                "Barra di scorrimento sottile e stondata sulla barra panoramica", getFieldEditorParent()));
+                "Thin rounded scrollbar on the overview ruler", getFieldEditorParent()));
         addField(new BooleanFieldEditor(Preferences.AUTHORS,
-                "Mostra l'autore accanto alla dichiarazione", getFieldEditorParent()));
+                "Show the author next to the declaration", getFieldEditorParent()));
         addField(new BooleanFieldEditor(Preferences.AUTHOR_ICON,
-                "Mostra l'icona accanto al nome", getFieldEditorParent()));
+                "Show the icon next to the name", getFieldEditorParent()));
         addField(new BooleanFieldEditor(Preferences.AUTHOR_INITIALS,
-                "Privacy: mostra solo le iniziali", getFieldEditorParent()));
+                "Privacy: show initials only", getFieldEditorParent()));
         addField(new ColorFieldEditor(Preferences.ADDED_COLOR,
-                "Righe aggiunte", getFieldEditorParent()));
+                "Added lines", getFieldEditorParent()));
         addField(new ColorFieldEditor(Preferences.MODIFIED_COLOR,
-                "Righe modificate", getFieldEditorParent()));
+                "Rewritten lines", getFieldEditorParent()));
         addField(new ColorFieldEditor(Preferences.DELETED_COLOR,
-                "Righe eliminate", getFieldEditorParent()));
+                "Deleted lines", getFieldEditorParent()));
         addField(new ColorFieldEditor(Preferences.MIXED_COLOR,
-                "Righe modificate e aggiunte insieme", getFieldEditorParent()));
+                "Rewritten and added together", getFieldEditorParent()));
     }
 
     @Override
     public void init(IWorkbench workbench) {
-        // lo store e gia impostato nel costruttore
+        // the store is already set in the constructor
     }
 }

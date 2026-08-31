@@ -4,24 +4,33 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Iterator;
 
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.Status;
+import org.eclipse.core.runtime.jobs.Job;
 import org.eclipse.jface.text.revisions.IRevisionRulerColumn;
 import org.eclipse.jface.text.revisions.IRevisionRulerColumnExtension;
+import org.eclipse.jface.text.revisions.RevisionInformation;
 import org.eclipse.jface.text.source.CompositeRuler;
 import org.eclipse.jface.text.source.IVerticalRuler;
+import org.eclipse.ui.IFileEditorInput;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.handlers.IHandlerService;
 import org.eclipse.ui.texteditor.AbstractDecoratedTextEditor;
 import org.eclipse.ui.texteditor.AbstractTextEditor;
 
 /**
- * Apre e chiude la colonna delle revisioni di Eclipse, la stessa che si
- * raggiunge da "Revisions" nel menu del righello: informazioni di revisione
- * visibili, colorazione per autore e nome autore in colonna. Un secondo clic
- * la richiude.
+ * Opens and closes Eclipse's revision column, the same one reached from
+ * "Revisions" in the ruler menu: revision information on show, colouring by
+ * author and the author name in the column. A second click closes it again.
  */
 final class RevisionToggle {
 
     private static final String SHOW_BLAME = "org.eclipse.egit.ui.team.ShowBlame";
+    /** How many times, and how often, EGit is checked for having installed the blame. */
+    private static final int ADOPT_ATTEMPTS = 20;
+    private static final int ADOPT_DELAY = 250;
 
     private final AbstractTextEditor editor;
     private boolean showing;
@@ -47,8 +56,8 @@ final class RevisionToggle {
         } catch (Exception failure) {
             Activator.log(failure);
         }
-        // La colorazione per autore va impostata dopo che EGit ha installato le
-        // revisioni, altrimenti la colonna non e ancora pronta.
+        // Colouring by author has to be set after EGit has installed the
+        // revisions, or the column is not ready yet.
         applyRendering(revisionColumn());
         PlatformUI.getWorkbench().getDisplay().timerExec(400, new Runnable() {
             @Override
@@ -57,6 +66,127 @@ final class RevisionToggle {
                 applyRendering(editorColumn());
             }
         });
+        adoptRevisions(0);
+    }
+
+    /**
+     * Rewrites the revisions EGit installed while leaving everything else as it
+     * was.
+     *
+     * Replacing them outright lost the commit card that opens on hovering the
+     * column, which is EGit's own and cannot be rebuilt by hand. So nothing is
+     * replaced: its revisions are taken, the ranges are broken up line by line
+     * - the column writes the text once per range - and the date is put before
+     * the name. All the rest, colour, id and hover card, stays what EGit would
+     * have shown.
+     *
+     * EGit installs the blame in a Job of its own, so the column is not ready
+     * as soon as the command returns: it is watched at intervals until it
+     * shows up.
+     */
+    private void adoptRevisions(final int attempt) {
+        if (!showing || attempt > ADOPT_ATTEMPTS) {
+            if (showing && attempt > ADOPT_ATTEMPTS) ownBlame();
+            return;
+        }
+        RevisionInformation source = installed();
+        if (source != null && !BlameRevisions.isOurs(source)) {
+            RevisionInformation perLine = BlameRevisions.perLine(source);
+            if (perLine != null) {
+                install(perLine);
+                return;
+            }
+        }
+        if (source != null && BlameRevisions.isOurs(source)) return;
+        PlatformUI.getWorkbench().getDisplay().timerExec(ADOPT_DELAY, new Runnable() {
+            @Override
+            public void run() {
+                adoptRevisions(attempt + 1);
+            }
+        });
+    }
+
+    /**
+     * The fallback for when EGit's revisions never arrive: the plug-in runs the
+     * blame itself. The rich hover card is lost, but the date and the name are
+     * on the column all the same.
+     */
+    private void ownBlame() {
+        final IFile file = fileOf(editor);
+        if (file == null) return;
+        Job job = new Job("ChangeLens: revisions with dates") {
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                final RevisionInformation information = BlameRevisions.of(file);
+                if (information == null || PlatformUI.getWorkbench().getDisplay().isDisposed()) {
+                    return Status.OK_STATUS;
+                }
+                PlatformUI.getWorkbench().getDisplay().asyncExec(new Runnable() {
+                    @Override
+                    public void run() {
+                        install(information);
+                    }
+                });
+                return Status.OK_STATUS;
+            }
+        };
+        job.setSystem(true);
+        job.schedule();
+    }
+
+    /** The revisions one of the two columns is already showing. */
+    private RevisionInformation installed() {
+        for (IRevisionRulerColumn column : new IRevisionRulerColumn[] { revisionColumn(), editorColumn() }) {
+            RevisionInformation information = installedOn(column);
+            if (information != null) return information;
+        }
+        return null;
+    }
+
+    /**
+     * The column does not expose the revisions it was handed: its
+     * RevisionPainter holds them, and that is where they are read from.
+     */
+    private RevisionInformation installedOn(IRevisionRulerColumn column) {
+        if (column == null) return null;
+        try {
+            for (Class<?> type = column.getClass(); type != null; type = type.getSuperclass()) {
+                Field painterField;
+                try {
+                    painterField = type.getDeclaredField("fRevisionPainter");
+                } catch (NoSuchFieldException missing) {
+                    continue;
+                }
+                painterField.setAccessible(true);
+                Object painter = painterField.get(column);
+                if (painter == null) return null;
+                Field info = painter.getClass().getDeclaredField("fRevisionInfo");
+                info.setAccessible(true);
+                Object value = info.get(painter);
+                return value instanceof RevisionInformation ? (RevisionInformation) value : null;
+            }
+        } catch (Exception ignored) {
+            // different internals in this version: fall back to our own blame
+        }
+        return null;
+    }
+
+    private void install(RevisionInformation information) {
+        if (!showing) return;
+        for (IRevisionRulerColumn column : new IRevisionRulerColumn[] { revisionColumn(), editorColumn() }) {
+            if (column == null) continue;
+            try {
+                column.setRevisionInformation(information);
+            } catch (Exception failure) {
+                Activator.log(failure);
+            }
+            applyRendering(column);
+        }
+    }
+
+    private static IFile fileOf(AbstractTextEditor editor) {
+        Object input = editor.getEditorInput();
+        return input instanceof IFileEditorInput ? ((IFileEditorInput) input).getFile() : null;
     }
 
     private void applyRendering(IRevisionRulerColumn column) {
@@ -72,11 +202,10 @@ final class RevisionToggle {
     }
 
     /**
-     * Chiude le revisioni. Non basta la colonna trovata nel righello: a
-     * seconda di come EGit ha installato il blame, quella che tiene davvero le
-     * revisioni puo essere la colonna dei numeri di riga dell'editor. Si
-     * azzerano tutte quelle raggiungibili, ed e cio che fa anche "Hide
-     * Revision Information" di Eclipse.
+     * Closes the revisions. The column found in the ruler is not enough:
+     * depending on how EGit installed the blame, the one really holding the
+     * revisions can be the editor's line number column. Every reachable one is
+     * cleared, which is what Eclipse's own "Hide Revision Information" does.
      */
     private void hide() {
         showing = false;
@@ -97,7 +226,7 @@ final class RevisionToggle {
         }
     }
 
-    /** La colonna dei numeri di riga dell'editor, che ospita le revisioni. */
+    /** The editor's line number column, the one that hosts the revisions. */
     private IRevisionRulerColumn editorColumn() {
         for (String name : new String[] { "fLineNumberRulerColumn", "fLineColumn" }) {
             try {
@@ -106,7 +235,7 @@ final class RevisionToggle {
                 Object value = field.get(editor);
                 if (value instanceof IRevisionRulerColumn) return (IRevisionRulerColumn) value;
             } catch (Exception ignored) {
-                // campo assente in questa versione di Eclipse: si prova il prossimo
+                // field absent in this Eclipse version: try the next one
             }
         }
         return null;

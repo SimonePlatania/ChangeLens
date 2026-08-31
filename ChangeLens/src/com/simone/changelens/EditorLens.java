@@ -20,9 +20,9 @@ import org.eclipse.ui.texteditor.AbstractTextEditor;
 import com.simone.changelens.preferences.Preferences;
 
 /**
- * Tutto cio che ChangeLens installa su un singolo editor, e la sua rimozione
- * completa. Un solo punto di aggancio e un solo punto di distacco: se qualcosa
- * fallisce a meta, quanto era gia stato installato viene comunque smontato.
+ * Everything ChangeLens installs on a single editor, and its complete removal.
+ * One attach point and one detach point: if something fails halfway, whatever
+ * had already been installed still gets taken down.
  */
 final class EditorLens {
 
@@ -63,8 +63,8 @@ final class EditorLens {
         painter.setRevisionToggle(new RevisionToggle(editor));
         hover = OverviewHover.install(controller, viewer);
         if (hover != null) {
-            // Trascinando la linguetta il testo si muove con setTopPixel, che non
-            // emette eventi di viewport: la colonna va ridisegnata a mano.
+            // Dragging the thumb moves the text with setTopPixel, which fires
+            // no viewport event: the column has to be repainted by hand.
             scrollBar = SlimScrollBar.install(viewer, hover.strip(), new Runnable() {
                 @Override
                 public void run() {
@@ -73,8 +73,8 @@ final class EditorLens {
             });
             hover.setScrollBar(scrollBar);
         } else {
-            Activator.log("ChangeLens: barra panoramica non raggiungibile in questo editor, "
-                    + "fumetto e barra di scorrimento sottile non disponibili.");
+            Activator.log("ChangeLens: the overview ruler is out of reach in this editor, "
+                    + "so the preview bubble and the slim scroll bar are unavailable.");
         }
         addColumn(editor);
         suppressQuickDiff();
@@ -101,7 +101,7 @@ final class EditorLens {
         return ((org.eclipse.ui.part.FileEditorInput) editor.getEditorInput()).getFile();
     }
 
-    /** La colonna va all'estrema destra del righello, a ridosso del testo. */
+    /** The column goes at the far right of the ruler, right against the text. */
     private void addColumn(AbstractTextEditor editor) {
         IVerticalRuler ruler = verticalRuler(editor);
         if (!(ruler instanceof CompositeRuler)) return;
@@ -111,10 +111,10 @@ final class EditorLens {
         column = new ChangeRulerColumn(controller, viewer);
         composite.addDecorator(index, column);
 
-        // Inserire una colonna rimpagina il righello, e le colonne installate
-        // da altri temi (DevStyle sostituisce quella dei numeri di riga) a
-        // volte restano senza spazio: una rimpaginazione esplicita, a giro di
-        // eventi finito, le rimette al loro posto.
+        // Inserting a column lays the ruler out again, and columns installed by
+        // other themes (DevStyle replaces the line number one) are sometimes
+        // left with no room: an explicit layout, once the event turn is over,
+        // puts them back in place.
         final Control control = composite.getControl();
         if (control != null && !control.isDisposed()) {
             control.getDisplay().asyncExec(new Runnable() {
@@ -140,9 +140,9 @@ final class EditorLens {
     }
 
     /**
-     * Nasconde la colonna Quick Diff nativa solo in questo editor, cosi non ci
-     * sono due serie di indicatori sulla stessa riga. La preferenza globale di
-     * Eclipse non viene toccata e al distacco lo stato viene ripristinato.
+     * Hides the native Quick Diff column in this editor only, so there are not
+     * two sets of markers on the same line. Eclipse's global preference is left
+     * alone, and the state is restored on detach.
      */
     private void suppressQuickDiff() {
         if (decorated == null || quickDiffSuppressed) return;

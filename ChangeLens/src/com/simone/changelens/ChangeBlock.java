@@ -6,20 +6,20 @@ import org.eclipse.jface.text.IRegion;
 import org.eclipse.jface.text.Position;
 
 /**
- * Un blocco contiguo di righe cambiate rispetto a HEAD.
+ * A contiguous block of lines that differ from HEAD.
  *
- * Il blocco non conserva numeri di riga: conserva una {@link Position}
- * registrata nel documento. Il documento la aggiorna da solo a ogni modifica,
- * quindi il blocco resta incollato al codice a cui appartiene e non si sposta
- * mai per effetto dello scorrimento o di una riga inserita piu in alto.
+ * The block keeps no line numbers: it keeps a {@link Position} registered with
+ * the document. The document updates it on its own at every edit, so the block
+ * stays glued to the code it belongs to and never moves because of a scroll or
+ * of a line inserted further up.
  */
 final class ChangeBlock {
 
     static final int ADDED = 1;
     static final int MODIFIED = 2;
-    /** Cancellazione: nessuna riga occupata, il segno sta sul confine. */
+    /** Deletion: no line occupied, the mark sits on the boundary. */
     static final int DELETED = 3;
-    /** Righe esistenti riscritte e altre aggiunte nello stesso blocco. */
+    /** Existing lines rewritten and others added within the same block. */
     static final int MIXED = 4;
 
     final int kind;
@@ -57,7 +57,7 @@ final class ChangeBlock {
         }
     }
 
-    /** Crea la Position che copre le righe indicate, estremi inclusi. */
+    /** Builds the Position covering the given lines, both ends included. */
     static Position positionFor(IDocument document, int startLine, int endLine, boolean deletion) {
         try {
             int lastLine = document.getNumberOfLines() - 1;
@@ -66,10 +66,10 @@ final class ChangeBlock {
             IRegion first = document.getLineInformation(start);
             if (deletion) return new Position(first.getOffset(), 0);
             IRegion last = document.getLineInformation(end);
-            // Il terminatore dell'ultima riga fa parte del blocco: senza, una
-            // riga svuotata (backspace sull'indentazione) lascerebbe la fine
-            // della Position sulla riga precedente e la barra perderebbe una
-            // riga pur non essendone stata cancellata nessuna.
+            // The last line's delimiter belongs to the block: without it, a
+            // line emptied out (backspace over the indentation) would leave the
+            // end of the Position on the previous line, and the bar would lose
+            // a line although none had been deleted.
             String delimiter = document.getLineDelimiter(end);
             int tail = delimiter == null ? 0 : delimiter.length();
             int length = last.getOffset() + last.getLength() + tail - first.getOffset();
@@ -81,10 +81,10 @@ final class ChangeBlock {
 
     String label() {
         switch (kind) {
-            case ADDED: return "Righe aggiunte";
-            case MODIFIED: return "Righe modificate";
-            case MIXED: return "Righe modificate e aggiunte";
-            default: return "Righe eliminate";
+            case ADDED: return "Added lines";
+            case MODIFIED: return "Modified lines";
+            case MIXED: return "Modified and added lines";
+            default: return "Deleted lines";
         }
     }
 }

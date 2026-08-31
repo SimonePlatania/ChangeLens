@@ -1,9 +1,9 @@
 package com.simone.changelens;
 
 /**
- * Risultato grezzo del diff, ancora espresso in numeri di riga.
- * Vive solo il tempo di passare dal Job di analisi al thread UI, dove viene
- * trasformato in {@link ChangeBlock} ancorato al documento.
+ * The raw result of the diff, still expressed in line numbers.
+ * It lives only long enough to travel from the analysis Job to the UI thread,
+ * where it becomes a {@link ChangeBlock} anchored to the document.
  */
 final class RawChange {
 

@@ -1,8 +1,15 @@
 package com.simone.changelens;
 
-/** Etichetta autore: {@code Nome}, {@code Nome+N}, {@code Nome*}, {@code new*}. */
+/** Author label: {@code Name}, {@code Name+N}, {@code Name*}, {@code not committed yet*}. */
 final class AuthorLabel {
     static final AuthorLabel PENDING = new AuthorLabel("", 0, false, false);
+
+    /**
+     * Code that does not exist in HEAD yet: it has no author to show, and
+     * calling it "yours" would be a guess. All it states is that it has not
+     * been committed.
+     */
+    static final String NOT_COMMITTED = "not committed yet";
 
     final String name;
     final int additionalAuthors;
@@ -16,15 +23,26 @@ final class AuthorLabel {
         this.brandNew = brandNew;
     }
 
+    static AuthorLabel notCommitted() {
+        return new AuthorLabel(NOT_COMMITTED, 0, true, true);
+    }
+
     boolean isPending() {
         return this == PENDING;
     }
 
+    /** No author: the notice alone, with no person icon and no {@code +N}. */
+    boolean isNotCommitted() {
+        return brandNew && NOT_COMMITTED.equals(name);
+    }
+
     /**
-     * {@code dirtyNow} arriva dal diff corrente invece che dal blame: cosi
-     * l'asterisco compare gia mentre si scrive, senza aspettare il ricalcolo.
+     * {@code dirtyNow} comes from the current diff rather than from the blame:
+     * that way the asterisk shows up while typing, without waiting for the
+     * recomputation.
      */
     String render(boolean initialsOnly, boolean dirtyNow) {
+        if (isNotCommitted()) return NOT_COMMITTED + "*";
         StringBuilder text = new StringBuilder();
         text.append(brandNew || !initialsOnly ? name : initials(name));
         if (additionalAuthors > 0) text.append('+').append(additionalAuthors);

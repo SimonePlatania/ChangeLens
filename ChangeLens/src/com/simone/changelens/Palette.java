@@ -12,9 +12,9 @@ import org.eclipse.swt.widgets.Display;
 import com.simone.changelens.preferences.Preferences;
 
 /**
- * Colori condivisi da tutti gli editor. Un solo set per Display, liberato
- * quando il Display muore: nessun editor alloca o distrugge Color per conto
- * proprio, quindi non esistono handle orfani ne uso di risorse gia disposte.
+ * Colours shared by every editor. One set per Display, released when the
+ * Display dies: no editor allocates or destroys a Color on its own, so there
+ * are no orphaned handles and no use of already disposed resources.
  */
 final class Palette {
 
@@ -53,14 +53,23 @@ final class Palette {
     }
 
     Color modified() {
-        return preference(Preferences.MODIFIED_COLOR, new RGB(223, 143, 53));
+        return preference(Preferences.MODIFIED_COLOR, new RGB(84, 140, 205));
+    }
+
+    /**
+     * The orange of the asterisked label. It does not go through the block
+     * preferences: those are the colour of rewritten lines in the ruler, this
+     * one flags a method with changes not yet committed.
+     */
+    Color attention() {
+        return get(new RGB(223, 143, 53));
     }
 
     Color deleted() {
         return preference(Preferences.DELETED_COLOR, new RGB(199, 58, 58));
     }
 
-    /** Blocco che modifica righe esistenti e ne aggiunge di nuove. */
+    /** A block that both rewrites existing lines and adds new ones. */
     Color mixed() {
         return preference(Preferences.MIXED_COLOR, new RGB(84, 140, 205));
     }
@@ -86,7 +95,7 @@ final class Palette {
         }
     }
 
-    /** Colore tenue per il nome autore, calcolato sui colori reali dell'editor. */
+    /** A soft colour for the author name, derived from the editor's real colours. */
     Color author(RGB foreground, RGB background) {
         return get(new RGB(
                 (foreground.red + background.red * 2) / 3,
@@ -94,7 +103,7 @@ final class Palette {
                 (foreground.blue + background.blue * 2) / 3));
     }
 
-    /** Variante piu accesa, usata quando il mouse e sopra il nome autore. */
+    /** The brighter variant, used while the mouse is over the author name. */
     Color authorHover(RGB foreground, RGB background) {
         return get(new RGB(
                 (foreground.red * 2 + background.red) / 3,
@@ -111,14 +120,25 @@ final class Palette {
         return color;
     }
 
+    /**
+     * The colour configured for a kind of change, or the built-in default.
+     *
+     * The Activator can be gone - the workbench shutting down while an editor
+     * still paints - and reading its store without checking threw right in the
+     * middle of a repaint. Without preferences the defaults are perfectly good
+     * colours.
+     */
     private Color preference(String key, RGB fallback) {
-        IPreferenceStore store = Activator.getDefault().getPreferenceStore();
+        Activator activator = Activator.getDefault();
         RGB rgb = fallback;
         try {
-            String value = store.getString(key);
-            if (value != null && !value.isEmpty()) rgb = StringConverter.asRGB(value);
+            if (activator != null) {
+                IPreferenceStore store = activator.getPreferenceStore();
+                String value = store == null ? null : store.getString(key);
+                if (value != null && !value.isEmpty()) rgb = StringConverter.asRGB(value);
+            }
         } catch (Exception ignored) {
-            // valore non valido nelle preferenze: si resta sul default
+            // invalid value in the preferences: the default stands
         }
         return get(rgb);
     }

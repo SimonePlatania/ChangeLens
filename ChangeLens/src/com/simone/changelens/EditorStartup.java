@@ -20,7 +20,7 @@ import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.FileEditorInput;
 import org.eclipse.ui.texteditor.AbstractTextEditor;
 
-/** Aggancia ChangeLens agli editor di testo aperti su file di un repository. */
+/** Hooks ChangeLens onto text editors opened on files of a repository. */
 public final class EditorStartup implements IStartup {
 
     private static final int RETRIES = 20;
@@ -57,7 +57,7 @@ public final class EditorStartup implements IStartup {
 
                     @Override
                     public void windowDeactivated(IWorkbenchWindow window) {
-                        // niente
+                        // nothing to do
                     }
                 });
             }
@@ -99,22 +99,22 @@ public final class EditorStartup implements IStartup {
 
             @Override
             public void partBroughtToTop(IWorkbenchPartReference reference) {
-                // gia coperto da partActivated
+                // already covered by partActivated
             }
 
             @Override
             public void partClosed(IWorkbenchPartReference reference) {
-                // EditorLens si smonta da solo quando la StyledText viene distrutta
+                // EditorLens takes itself down when the StyledText is destroyed
             }
 
             @Override
             public void partDeactivated(IWorkbenchPartReference reference) {
-                // niente
+                // nothing to do
             }
 
             @Override
             public void partHidden(IWorkbenchPartReference reference) {
-                // niente
+                // nothing to do
             }
         });
     }
@@ -150,6 +150,7 @@ public final class EditorStartup implements IStartup {
                 ((FileEditorInput) part.getEditorInput()).getFile());
     }
 
+
     private static Object sourceViewer(IEditorPart part) {
         try {
             Method method = AbstractTextEditor.class.getDeclaredMethod("getSourceViewer", (Class<?>[]) null);
@@ -160,4 +161,5 @@ public final class EditorStartup implements IStartup {
             return null;
         }
     }
+
 }
