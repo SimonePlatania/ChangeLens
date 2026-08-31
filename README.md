@@ -10,9 +10,9 @@ No views to open. No panels to arrange.
 https://simoneplatania.github.io/ChangeLens/
 ```
 
-<!-- SCREENSHOT: the hover preview open over the overview ruler, showing code + line numbers + author + an error message at the bottom. This is the first thing a visitor should see. -->
+## Screenshots
+<img width="2087" height="506" alt="Image" src="https://github.com/user-attachments/assets/cd60fec9-b776-457b-a0d4-17acffb7a901" />
 
----
 
 ## What you get
 
