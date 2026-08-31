@@ -142,9 +142,7 @@ Eclipse's overview ruler stays exactly as it was — errors, warnings, tasks and
 
 Issues and pull requests are welcome — especially bug reports that come with a repository state I can reproduce. If something behaves oddly around staging, line endings or blame, the details of your repo configuration are usually the whole story.
 
-## Licence
-
-MIT License
+## MIT License
 
 Copyright (c) 2026 AlienZ
 
